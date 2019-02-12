@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html xmlns = "http://www.w3.org/1999/xhtml">
+<head>
+	<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/0.4.23/p5.min.js" type="text/javascript"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.0.0-beta1/jquery.min.js" type="text/javascript"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-csv/0.71/jquery.csv-0.71.min.js" type="text/javascript"></script>
+	<script src="js/Base64.js" type="text/javascript"></script>
+	<script src="js/Base64binary.js" type="text/javascript"></script>
+	<script src="js/WebAudioAPI.js" type="text/javascript"></script>
+	<script src="js/MIDI.js" type="text/javascript"></script>
+	<script src="js/dom_request_xhr.js" type="text/javascript"></script>
+	<script src="js/dom_request_script.js" type="text/javascript"></script>
+</head>
+<body style="display:none">
+<script type="text/javascript">
+var loaded = false; //for making sure function draw doesn't run until the file is loaded
+var wifi; //wifi object
+var mac = []; //array for assigning notes and stuff
+var vlist = []; //array for assigning vendors(instruments)
+//intrument array for midi.js
+var instrumentlist = [ "acoustic_bass", "acoustic_grand_piano", "electric_bass_finger", "steel_drums", "synth_drum" ];
+
+window.onload = function () {
+	MIDI.loadPlugin({
+		soundfontUrl: "./soundfont/",
+		instruments: instrumentlist,
+		onsuccess: function() {
+			document.body.style.display = 'block'; //make sure it shows the web only after it is done loading
+			refresh(); //for reading list
+			alert('ok!'); //show ok
+		}
+	});
+};
+function refresh() {
+	loaded = false; //make sure to stop funntion draw running
+	readlist(); //call readlist function
+	loaded = true; //indicator for function draw to run
+}
+
+function readlist() {
+	$.ajax({ //ajax to read content
+		url: "list.csv", //http://192.168.0.106:8000/list.csv
+		async: false, //make the operation is done completely
+		success: function (wlist) {
+				wifi = $.csv.toObjects(wlist); //**jquery-csv.js function
+				//read vendor, make mac list to array
+				vlist.length = 0; //**reset vlist
+				mac.length = 0; //**reset mac
+				for(i=0;i<wifi.length;i++) {
+					vlist[i] = readvendor(wifi[i].MAC); //vlist is the property MAC of object wifi
+					mac[i] = split(wifi[i].MAC, ":"); //similarly
+					for(j=0;j<mac[i].length;j++) {
+						mac[i][j] = parseInt(mac[i][j], 16); //**convert all hex values to decimal
+					}
+				}
+		},
+	});
+}
+
+function readvendor(mac)
+{
+		var vendor; //vendor for mac address
+		$.ajax({
+			url: "http://api.macvendors.com/" + mac,
+			async: false,
+			success: function (data) {
+				vendor = data; // the web will only return simply the data
+			},
+		});
+		return vendor;
+}
+
+function setup() {
+	createCanvas(1024,720);
+	background(200);
+	frameRate(8); //make it more musical?
+}
+
+
+function draw() {
+	if (loaded == true) {
+		background(200,50);
+		for(x=0;x<mac.length;x++) {
+			for(i=0;i<6;i++) {
+				playins(vlist[x],mac[x][i],int(map(mac[x][i],0,255,50,127))); //playinstrument function(instrument,interval/note,strength)
+				fill(255); //fill for text
+				textSize(20); //text size
+				text(mac[x][i],i*100+50,x*100+55); //show the decimal value of mac addresses in rectangles
+			}
+		}
+		for(i=0;i<vlist.length;i++) {
+			text(vlist[i],650,i*100+55); //show the vendors name
+		}
+		if (frameCount%96 == 0) {
+			refresh(); //***each 96 frame update the list.csv for interactive experience!
+		}
+	}
+}
+
+function playins(instrument,mvalue,strength) {
+	if (frameCount%16 == int(map(mvalue,0,255,0,16))) {
+		var dcol; //color of rectangles, rgb colorspace
+		var noterange = []; //note range(usually 21-108, but i adjust it)
+		switch (instrument) {
+			case "APPLE, INC.":
+				instrument = 1; //piano
+				dcol = color(255,0,0);
+				noterange = [21,108];
+				break;
+			case "MICROSOFT CORPORATION":
+				instrument = 0; //acoustic bass
+				dcol = color(0,255,0);
+				noterange = [21,40];
+				strength = strength*2;
+				break;
+			case "NOKIA CORPORATION":
+				instrument = 4; //synth drum
+				dcol = color(0,0,255);
+				noterange = [30,40];
+				break;
+			case "SAMSUNG ELECTRO MECHANICS CO.,LTD.":
+				instrument = 2; //elec bass
+				dcol = color(0,255,255);
+				noterange = [50,70];
+				strength = strength/2;
+				break;
+			default: //other vendors
+				instrument = 3; //steel drum
+				dcol = color(255,0,255);
+				noterange = [30,40];
+				break;
+		}
+
+		mvalue = int(map(mvalue,0,255,noterange[0],noterange[1])); //mvalue is treated as note, then converted to fit the note range
+		MIDI.channels[instrument].instrument = MIDI.GM.byName[instrumentlist[instrument]].number; //give each channel a different instrument
+		MIDI.noteOn(instrument, mvalue, strength, 0); //play note
+		MIDI.noteOff(instrument, mvalue, 0.5); //it's duration
+		noStroke();
+		fill(dcol);
+		rect(i*100+20,x*100+20,100,100); //generate rectangles
+	}
+}
+</script>
+</body>
+</html>
